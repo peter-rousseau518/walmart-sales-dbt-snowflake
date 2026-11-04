@@ -8,13 +8,46 @@ models:
         data_tests: [unique, not_null]
 
   - name: dim_date
-    description: One row per week.
+    description: >
+      Calendar spine: one row per retail week (week ending Friday), Feb 2010 - Dec 2015.
+      has_sales flags weeks that have sales data, so analysts don't count empty weeks.
     columns:
       - name: date_key
         data_tests: [unique, not_null]
+      - name: has_sales
+        data_tests: [not_null]
 
   - name: fct_weekly_sales
-    description: Weekly sales per store and department.
+    description: "Grain: one row per store, department and week. Sales only."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [store_key, dept_id, date_key]
+    columns:
+      - name: store_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_store')
+                field: store_key
+      - name: date_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+
+  - name: fct_store_weekly_conditions
+    description: >
+      Grain: one row per store and week. Markdowns, temperature, fuel price, CPI and
+      unemployment, stored once per store-week. Join to fct_weekly_sales only after
+      aggregating sales to store-week.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [store_key, date_key]
     columns:
       - name: store_key
         data_tests:

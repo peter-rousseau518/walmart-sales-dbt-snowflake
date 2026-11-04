@@ -11,23 +11,23 @@ def load_weekly():
     """One row per store per week."""
     session = get_active_session()
     df = session.sql(f"""
+        with sales as (
+            -- aggregate sales to store-week BEFORE joining the store-week conditions
+            select store_key, date_key, sum(weekly_sales) as weekly_sales
+            from {DB}.fct_weekly_sales
+            group by 1, 2
+        )
         select
             d.full_date, d.year, d.quarter, d.month, d.month_name, d.is_holiday,
-            s.store_key, s.store_type, s.store_size,
-            sum(f.weekly_sales)  as weekly_sales,
-            max(f.temperature)   as temperature,
-            max(f.fuel_price)    as fuel_price,
-            max(f.cpi)           as cpi,
-            max(f.unemployment)  as unemployment,
-            max(f.markdown1)     as markdown1,
-            max(f.markdown2)     as markdown2,
-            max(f.markdown3)     as markdown3,
-            max(f.markdown4)     as markdown4,
-            max(f.markdown5)     as markdown5
-        from {DB}.fct_weekly_sales f
-        join {DB}.dim_date  d on f.date_key  = d.date_key
-        join {DB}.dim_store s on f.store_key = s.store_key
-        group by 1, 2, 3, 4, 5, 6, 7, 8, 9
+            s.store_key, st.store_type, st.store_size,
+            s.weekly_sales,
+            c.temperature, c.fuel_price, c.cpi, c.unemployment,
+            c.markdown1, c.markdown2, c.markdown3, c.markdown4, c.markdown5
+        from sales s
+        left join {DB}.fct_store_weekly_conditions c
+               on c.store_key = s.store_key and c.date_key = s.date_key
+        join {DB}.dim_date  d  on s.date_key  = d.date_key
+        join {DB}.dim_store st on s.store_key = st.store_key
     """).to_pandas()
     df.columns = df.columns.str.lower()
     df["full_date"] = pd.to_datetime(df["full_date"])
