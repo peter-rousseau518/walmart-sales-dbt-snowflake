@@ -15,7 +15,7 @@ CSV files (S3) -> Snowflake RAW schema -> dbt staging models -> dbt marts (2 dim
 - A 10-page Streamlit app covering sales by store, holiday, temperature, store size, store type, month, markdowns, fuel price, CPI, and department
 
 ## Data model
-
+   ![Star schema](docs/images/star-schema.png)
 | Table | Grain | Rows |
 |---|---|---|
 | `dim_store` | one row per store | 45 |
