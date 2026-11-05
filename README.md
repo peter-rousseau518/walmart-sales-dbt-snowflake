@@ -4,8 +4,21 @@ An end-to-end analytics pipeline. Raw CSV files in S3 are loaded into Snowflake,
 
 ## Architecture
 
-CSV files (S3) -> Snowflake RAW schema -> dbt staging models -> dbt marts (2 dimensions + 1 fact) -> Streamlit app
+**Built today (proof of concept):** CSV files (S3) -> Snowflake RAW schema -> dbt staging models -> dbt marts
+(2 dimensions + 2 facts, each at its own grain) -> Streamlit in Snowflake app
 
+**Production design (in progress):** the target architecture below adds automated ingestion, an error path and
+environment promotion. Solid boxes are built; dashed boxes are being implemented next.
+
+![Production design](docs/images/architecture-production-design.png)
+Planned additions:
+- **Ingestion:** Snowpipe auto-ingest with an explicit load contract (DDL + file format with `NULL_IF = ('NA', '')`)
+- **Error handling:** failed files and rejected rows go to an error bucket; SNS alerts the source team and feeds an SQS reprocess queue
+- **Backfill:** a parallel, date-parameterized job reprocesses corrected files without duplicating data
+- **Orchestration:** scheduled dbt Cloud jobs, with tests gating each layer
+- **CI/CD and environments:** pull-request builds in DEV, then STAGING (QA) and PROD
+- **BI:** Power BI semantic model on the gold tables
+  
 ## What I built
 
 - An S3 bucket and a Snowflake storage integration, with a read-only IAM policy scoped to one folder
