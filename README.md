@@ -4,31 +4,36 @@ An end-to-end analytics pipeline. Raw CSV files in S3 are loaded into Snowflake,
 
 ## Architecture
 
-**Built today (proof of concept):** CSV files (S3) -> Snowflake RAW schema -> dbt staging models -> dbt marts
-(2 dimensions + 2 facts, each at its own grain) -> Streamlit in Snowflake app
+**Built today:** CSV files (one S3 landing bucket per environment) -> Snowflake RAW (bronze, explicit load contract)
+-> dbt staging (silver, de-duplicated) -> dbt marts (gold: 2 dimensions + 2 facts, each at its own grain)
+-> Streamlit in Snowflake app. Separate DEV, STAGING and PROD databases.
 
 **Production design (in progress):** the target architecture below adds automated ingestion, an error path and
 environment promotion. Solid boxes are built; dashed boxes are being implemented next.
 
 ![Production design](docs/images/architecture-production-design.png)
+
 Planned additions:
-- **Ingestion:** Snowpipe auto-ingest with an explicit load contract (DDL + file format with `NULL_IF = ('NA', '')`)
+- **Ingestion:** Snowpipe auto-ingest (the explicit load contract is already built)
 - **Error handling:** failed files and rejected rows go to an error bucket; SNS alerts the source team and feeds an SQS reprocess queue
 - **Backfill:** a parallel, date-parameterized job reprocesses corrected files without duplicating data
 - **Orchestration:** scheduled dbt Cloud jobs, with tests gating each layer
-- **CI/CD and environments:** pull-request builds in DEV, then STAGING (QA) and PROD
+- **CI/CD:** GitHub Actions running pull-request builds in DEV, then deploys to STAGING (QA) and PROD (the three environments are already built)
 - **BI:** Power BI semantic model on the gold tables
   
 ## What I built
 
-- An S3 bucket and a Snowflake storage integration, with a read-only IAM policy scoped to one folder
-- Loaded three CSV files with `COPY INTO`, with column types inferred from the file headers
+- Three environments (DEV, STAGING, PROD): one S3 landing bucket and one Snowflake database each, connected through a storage integration with a read-only IAM policy scoped to the `landing/` folders
+- An explicit load contract: typed raw tables with NOT NULL keys and a file format that turns "NA" into NULL. Files that break it are skipped (`ON_ERROR = SKIP_FILE`), and every row records its source file and load time
+- Silver staging models that de-duplicate re-sent rows (latest load wins)
 - A dbt project with 3 staging models, 2 dimensions (`dim_store`, and `dim_date` as a calendar spine) and 2 fact tables, each at its true grain: `fct_weekly_sales` (store × department × week, about 421K rows) and `fct_store_weekly_conditions` (store × week)
 - dbt tests: unique, not_null, relationships from each fact to each dimension, grain tests on both facts (`dbt_utils.unique_combination_of_columns` plus a custom singular test), and a test that the calendar's holiday rules match the source holiday flags
 - A 10-page Streamlit app covering sales by store, holiday, temperature, store size, store type, month, markdowns, fuel price, CPI, and department
 
 ## Data model
-   ![Star schema](docs/images/star-schema.png)
+
+![Star schema](docs/images/star-schema.png)
+
 | Table | Grain | Rows |
 |---|---|---|
 | `dim_store` | one row per store | 45 |
@@ -39,7 +44,7 @@ Planned additions:
 ## Data quality decisions
 
 - Weekly conditions (temperature, CPI, fuel price, markdowns) are recorded per store and week, so they live in their own fact table at that grain instead of repeating on every department row. To combine them with sales, aggregate sales to store-week first, then join (the app does this).
-- Source values of "NA" in the markdown columns are converted to nulls.
+- The source writes missing values as the text "NA" (markdowns, CPI, unemployment). The load contract converts them to NULL at the warehouse gate (`NULL_IF = ('NA', '')`). MarkDown1 is missing in about 51% of rows because markdown data starts in November 2011.
 - Grain tests check that no store/department/week (sales) or store/week (conditions) combination appears twice.
 - `dim_date` is generated as a calendar spine with retail holiday rules and a `has_sales` flag, so weeks without sales data are never counted by mistake.
 
@@ -47,7 +52,9 @@ Planned additions:
 
 - `models/`: dbt staging and mart models
 - `tests/`: custom dbt test
-- `snowflake/setup.sql`: S3 stage and load commands (private values replaced with placeholders)
+- `snowflake/00_account_setup.sql`: one-time account setup (warehouse, storage integration locations)
+- `snowflake/01_raw_layer_<env>.sql`: per-environment database, load contract, stage and load
+- `aws/iam/snowflake-read-policy.json`: read-only IAM policy for the landing buckets
 - `streamlit_app/`: the Streamlit in Snowflake app
 - `profiles.yml.example`: sample dbt connection profile
 
@@ -65,12 +72,14 @@ Planned additions:
 
 ## How to run it
 
-1. Create an S3 bucket, upload the CSV files, and run `snowflake/setup.sql`
-2. Copy `profiles.yml.example` to `~/.dbt/profiles.yml` and fill in your account, user and
-   password. Keep database `WALMART_E2E` and schema `DBT_PETER`: the Streamlit app reads from
-   that location (set in `streamlit_app/common.py`). Raw data is read from `DBT_LEARNING.RAW`.
-3. Run `pip install dbt-snowflake`, then `dbt deps` (installs dbt_utils) and `dbt build`
-4. Create a Streamlit in Snowflake app and paste in the files from `streamlit_app/`
+1. Create the landing buckets (`walmart-sales-landing-<env>-<suffix>`) and upload each CSV to its folder:
+   `landing/department/`, `landing/stores/`, `landing/fact/`. Attach `aws/iam/snowflake-read-policy.json` to the
+   Snowflake IAM role.
+2. In Snowflake, run `snowflake/00_account_setup.sql` once, then `snowflake/01_raw_layer_<env>.sql` for each environment.
+3. Copy `profiles.yml.example` to `~/.dbt/profiles.yml` and fill in your account, user and password.
+4. Run `pip install dbt-snowflake`, `dbt deps`, then `dbt build` (DEV), `dbt build --target staging` and
+   `dbt build --target prod`. The Streamlit app reads `WALMART_PROD.ANALYTICS`.
+5. Create a Streamlit in Snowflake app and paste in the files from `streamlit_app/`
 
 ## Data source
 

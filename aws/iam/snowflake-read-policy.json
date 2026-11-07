@@ -1,0 +1,38 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadLandingFiles",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:GetObjectVersion"
+      ],
+      "Resource": [
+        "arn:aws:s3:::walmart-sales-landing-dev-pr518/landing/*",
+        "arn:aws:s3:::walmart-sales-landing-staging-pr518/landing/*",
+        "arn:aws:s3:::walmart-sales-landing-prod-pr518/landing/*"
+      ]
+    },
+    {
+      "Sid": "ListLandingFolder",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket",
+        "s3:GetBucketLocation"
+      ],
+      "Resource": [
+        "arn:aws:s3:::walmart-sales-landing-dev-pr518",
+        "arn:aws:s3:::walmart-sales-landing-staging-pr518",
+        "arn:aws:s3:::walmart-sales-landing-prod-pr518"
+      ],
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "landing/*"
+          ]
+        }
+      }
+    }
+  ]
+}

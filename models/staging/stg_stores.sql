@@ -1,5 +1,10 @@
+-- Silver: rename and de-duplicate (latest load wins).
 select
-    "Store"::int as store_id,
-    "Type"       as store_type,
-    "Size"::int  as store_size
+    store_id,
+    store_type,
+    store_size
 from {{ source('walmart', 'stores') }}
+qualify row_number() over (
+    partition by store_id
+    order by _loaded_at desc, _file_row_number desc
+) = 1

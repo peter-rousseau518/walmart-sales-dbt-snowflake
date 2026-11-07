@@ -1,3 +1,6 @@
+# Copy to ~/.dbt/profiles.yml and fill in the three personal values.
+# Each target builds into its own environment database; the RAW (bronze) layer
+# is read from the same database (see models/staging/_sources.yml).
 my_project:
   target: dev
   outputs:
@@ -8,6 +11,26 @@ my_project:
       password: <your_password>
       role: ACCOUNTADMIN
       warehouse: COMPUTE_WH
-      database: WALMART_E2E
-      schema: DBT_PETER
+      database: WALMART_DEV
+      schema: DBT_PETER          # personal development schema
+      threads: 4
+    staging:
+      type: snowflake
+      account: <your_account_identifier>
+      user: <your_username>
+      password: <your_password>
+      role: ACCOUNTADMIN
+      warehouse: COMPUTE_WH
+      database: WALMART_STAGING
+      schema: ANALYTICS
+      threads: 4
+    prod:
+      type: snowflake
+      account: <your_account_identifier>
+      user: <your_username>
+      password: <your_password>
+      role: ACCOUNTADMIN
+      warehouse: COMPUTE_WH
+      database: WALMART_PROD
+      schema: ANALYTICS
       threads: 4

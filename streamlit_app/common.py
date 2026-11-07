@@ -2,7 +2,7 @@ import pandas as pd
 import streamlit as st
 from snowflake.snowpark.context import get_active_session
 
-DB = "WALMART_E2E.DBT_PETER"
+DB = "WALMART_PROD.ANALYTICS"   # the dashboard reads production only
 MARKDOWNS = ["markdown1", "markdown2", "markdown3", "markdown4", "markdown5"]
 
 

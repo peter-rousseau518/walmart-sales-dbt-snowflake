@@ -2,7 +2,10 @@ version: 2
 
 sources:
   - name: walmart
-    database: DBT_LEARNING
+    description: >
+      Bronze layer. Each environment reads its own RAW schema
+      (WALMART_DEV, WALMART_STAGING or WALMART_PROD), typed by the load contract.
+    database: "{{ target.database }}"
     schema: RAW
     tables:
       - name: department
