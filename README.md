@@ -8,7 +8,7 @@ An end-to-end analytics pipeline. Raw CSV files in S3 are loaded into Snowflake,
 ## Architecture
 
 **Built today:** CSV files (one S3 landing bucket per environment) -> Snowflake RAW (bronze, explicit load contract)
--> dbt staging (silver, de-duplicated) -> dbt marts (gold: 2 dimensions + 2 facts, each at its own grain)
+-> dbt staging (SILVER schema, de-duplicated views) -> dbt marts (GOLD schema: 2 dimensions + 2 facts, each at its own grain)
 -> Streamlit in Snowflake app. Separate DEV, STAGING and PROD databases, with CI/CD in GitHub Actions.
 
 **Production design (in progress):** the target architecture below adds automated ingestion, an error path and
@@ -55,9 +55,9 @@ Planned additions:
 
 | Environment | Snowflake database | How code gets there |
 |---|---|---|
-| DEV | `WALMART_DEV` (personal schema, plus `CI_PR_<n>` per pull request) | `dbt build` locally; CI builds every pull request |
-| STAGING | `WALMART_STAGING.ANALYTICS` | Automatic on merge to `main` |
-| PROD | `WALMART_PROD.ANALYTICS` | After STAGING passes **and** a reviewer approves the `production` environment |
+| DEV | `WALMART_DEV` (`DBT_PETER_SILVER`/`_GOLD`, plus `CI_PR_<n>_SILVER`/`_GOLD` per pull request) | `dbt build` locally; CI builds every pull request |
+| STAGING | `WALMART_STAGING` (`SILVER`, `GOLD`) | Automatic on merge to `main` |
+| PROD | `WALMART_PROD` (`SILVER`, `GOLD`) | After STAGING passes **and** a reviewer approves the `production` environment |
 
 - `.github/workflows/ci.yml`: builds and tests each pull request; drops its schema when the pull request closes
 - `.github/workflows/deploy.yml`: STAGING on merge, then PROD behind an approval gate
@@ -71,7 +71,8 @@ Planned additions:
 - `snowflake/01_raw_layer_<env>.sql`: per-environment database, load contract, stage and load
 - `aws/iam/snowflake-read-policy.json`: read-only IAM policy for the landing buckets
 - `snowflake/02_ci_service_user.sql`: `TRANSFORMER` role and the `GITHUB_CI` key-pair service user
-- `.github/workflows/`, `ci/`, `macros/`: CI/CD pipeline
+- `.github/workflows/`, `ci/`: CI/CD pipeline
+- `macros/generate_schema_name.sql`: puts staging models in SILVER and marts in GOLD (prefixed in DEV and CI)
 - `streamlit_app/`: the Streamlit in Snowflake app
 - `profiles.yml.example`: sample dbt connection profile
 
@@ -95,7 +96,7 @@ Planned additions:
 2. In Snowflake, run `snowflake/00_account_setup.sql` once, then `snowflake/01_raw_layer_<env>.sql` for each environment.
 3. Copy `profiles.yml.example` to `~/.dbt/profiles.yml` and fill in your account, user and password.
 4. Run `pip install dbt-snowflake`, `dbt deps`, then `dbt build` (DEV), `dbt build --target staging` and
-   `dbt build --target prod`. The Streamlit app reads `WALMART_PROD.ANALYTICS`.
+   `dbt build --target prod`. The Streamlit app reads `WALMART_PROD.GOLD`.
 5. Create a Streamlit in Snowflake app and paste in the files from `streamlit_app/`
 
 ## Data source

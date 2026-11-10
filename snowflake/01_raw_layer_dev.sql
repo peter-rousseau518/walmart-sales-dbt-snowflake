@@ -13,11 +13,11 @@ USE WAREHOUSE COMPUTE_WH;
 -- ---------------------------------------------------------------------
 -- 1. Environment database and schemas
 --    RAW       = bronze: data exactly as delivered, typed by the load contract
---    ANALYTICS = where dbt builds silver (staging views) and gold (marts)
+--    SILVER and GOLD are created by dbt the first time it builds
+--    (DEV and CI use prefixed schemas, e.g. DBT_PETER_GOLD)
 -- ---------------------------------------------------------------------
 CREATE DATABASE IF NOT EXISTS WALMART_DEV;
 CREATE SCHEMA   IF NOT EXISTS WALMART_DEV.RAW;
-CREATE SCHEMA   IF NOT EXISTS WALMART_DEV.ANALYTICS;
 USE SCHEMA WALMART_DEV.RAW;
 
 -- ---------------------------------------------------------------------
