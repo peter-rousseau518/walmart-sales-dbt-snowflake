@@ -5,7 +5,7 @@ from snowflake.snowpark.context import get_active_session
 st.set_page_config(page_title="Walmart Sales", layout="wide")
 session = get_active_session()
 
-DB = "WALMART_PROD.ANALYTICS"   # the dashboard reads production only
+DB = "WALMART_PROD.GOLD"   # the dashboard reads production only
 
 
 @st.cache_data

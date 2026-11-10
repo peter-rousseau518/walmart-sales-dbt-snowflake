@@ -21,7 +21,7 @@ my_project:
       role: TRANSFORMER
       warehouse: COMPUTE_WH
       database: WALMART_STAGING
-      schema: ANALYTICS
+      schema: ANALYTICS          # base schema only; models go to SILVER and GOLD
       threads: 4
     prod:
       type: snowflake
@@ -31,5 +31,5 @@ my_project:
       role: TRANSFORMER
       warehouse: COMPUTE_WH
       database: WALMART_PROD
-      schema: ANALYTICS
+      schema: ANALYTICS          # base schema only; models go to SILVER and GOLD
       threads: 4

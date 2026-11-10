@@ -4,9 +4,15 @@ profile: my_project
 
 model-paths: ["models"]
 
+# Medallion layers get their own schemas:
+#   staging/ -> SILVER (views),  marts/ -> GOLD (tables)
+# In STAGING and PROD the names are exactly SILVER and GOLD; in DEV and CI they are
+# prefixed with the developer or pull-request schema (see macros/generate_schema_name.sql).
 models:
   my_project:
     staging:
       +materialized: view
+      +schema: silver
     marts:
       +materialized: table
+      +schema: gold
