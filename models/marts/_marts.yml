@@ -2,7 +2,7 @@ version: 2
 
 models:
   - name: dim_store
-    description: One row per store.
+    description: One row per store, with store type (A, B, C) and size.
     columns:
       - name: store_key
         data_tests: [unique, not_null]
