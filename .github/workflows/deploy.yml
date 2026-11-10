@@ -1,0 +1,68 @@
+name: dbt deploy
+
+# Merging to main deploys to STAGING automatically. PROD runs only after STAGING
+# passes AND a reviewer approves the "production" environment in GitHub.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "models/**"
+      - "tests/**"
+      - "macros/**"
+      - "dbt_project.yml"
+      - "packages.yml"
+      - "ci/**"
+  workflow_dispatch:
+
+concurrency: deploy
+
+env:
+  SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+  SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+  SNOWFLAKE_PRIVATE_KEY_PATH: ${{ github.workspace }}/rsa_key.p8
+
+jobs:
+  staging:
+    name: Deploy to STAGING
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dbt
+        run: pip install -r ci/requirements.txt
+      - name: Write Snowflake private key
+        run: |
+          printf '%s\n' "$SNOWFLAKE_PRIVATE_KEY" > rsa_key.p8
+          chmod 600 rsa_key.p8
+        env:
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+      - name: dbt deps
+        run: dbt deps --profiles-dir ci
+      - name: dbt build (STAGING)
+        run: dbt build --profiles-dir ci --target staging
+
+  prod:
+    name: Deploy to PROD
+    needs: staging
+    runs-on: ubuntu-latest
+    environment: production        # waits here for approval
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dbt
+        run: pip install -r ci/requirements.txt
+      - name: Write Snowflake private key
+        run: |
+          printf '%s\n' "$SNOWFLAKE_PRIVATE_KEY" > rsa_key.p8
+          chmod 600 rsa_key.p8
+        env:
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+      - name: dbt deps
+        run: dbt deps --profiles-dir ci
+      - name: dbt build (PROD)
+        run: dbt build --profiles-dir ci --target prod

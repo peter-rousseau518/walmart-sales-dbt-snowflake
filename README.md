@@ -1,12 +1,15 @@
 # Walmart Sales Analytics: S3, Snowflake, dbt, Streamlit
 
+[![dbt CI](https://github.com/peter-rousseau518/walmart-sales-dbt-snowflake/actions/workflows/ci.yml/badge.svg)](https://github.com/peter-rousseau518/walmart-sales-dbt-snowflake/actions/workflows/ci.yml)
+[![dbt deploy](https://github.com/peter-rousseau518/walmart-sales-dbt-snowflake/actions/workflows/deploy.yml/badge.svg)](https://github.com/peter-rousseau518/walmart-sales-dbt-snowflake/actions/workflows/deploy.yml)
+
 An end-to-end analytics pipeline. Raw CSV files in S3 are loaded into Snowflake, modeled into a star schema with dbt, and visualized in a multi-page Streamlit in Snowflake app.
 
 ## Architecture
 
 **Built today:** CSV files (one S3 landing bucket per environment) -> Snowflake RAW (bronze, explicit load contract)
 -> dbt staging (silver, de-duplicated) -> dbt marts (gold: 2 dimensions + 2 facts, each at its own grain)
--> Streamlit in Snowflake app. Separate DEV, STAGING and PROD databases.
+-> Streamlit in Snowflake app. Separate DEV, STAGING and PROD databases, with CI/CD in GitHub Actions.
 
 **Production design (in progress):** the target architecture below adds automated ingestion, an error path and
 environment promotion. Solid boxes are built; dashed boxes are being implemented next.
@@ -18,7 +21,6 @@ Planned additions:
 - **Error handling:** failed files and rejected rows go to an error bucket; SNS alerts the source team and feeds an SQS reprocess queue
 - **Backfill:** a parallel, date-parameterized job reprocesses corrected files without duplicating data
 - **Orchestration:** scheduled dbt Cloud jobs, with tests gating each layer
-- **CI/CD:** GitHub Actions running pull-request builds in DEV, then deploys to STAGING (QA) and PROD (the three environments are already built)
 - **BI:** Power BI semantic model on the gold tables
   
 ## What I built
@@ -26,6 +28,7 @@ Planned additions:
 - Three environments (DEV, STAGING, PROD): one S3 landing bucket and one Snowflake database each, connected through a storage integration with a read-only IAM policy scoped to the `landing/` folders
 - An explicit load contract: typed raw tables with NOT NULL keys and a file format that turns "NA" into NULL. Files that break it are skipped (`ON_ERROR = SKIP_FILE`), and every row records its source file and load time
 - Silver staging models that de-duplicate re-sent rows (latest load wins)
+- CI/CD with GitHub Actions: every pull request is built and tested in its own throwaway schema in DEV; merging to `main` deploys to STAGING, then to PROD after a manual approval. CI runs as a key-pair service user with a least-privilege `TRANSFORMER` role
 - A dbt project with 3 staging models, 2 dimensions (`dim_store`, and `dim_date` as a calendar spine) and 2 fact tables, each at its true grain: `fct_weekly_sales` (store × department × week, about 421K rows) and `fct_store_weekly_conditions` (store × week)
 - dbt tests: unique, not_null, relationships from each fact to each dimension, grain tests on both facts (`dbt_utils.unique_combination_of_columns` plus a custom singular test), and a test that the calendar's holiday rules match the source holiday flags
 - A 10-page Streamlit app covering sales by store, holiday, temperature, store size, store type, month, markdowns, fuel price, CPI, and department
@@ -48,6 +51,18 @@ Planned additions:
 - Grain tests check that no store/department/week (sales) or store/week (conditions) combination appears twice.
 - `dim_date` is generated as a calendar spine with retail holiday rules and a `has_sales` flag, so weeks without sales data are never counted by mistake.
 
+## CI/CD and environments
+
+| Environment | Snowflake database | How code gets there |
+|---|---|---|
+| DEV | `WALMART_DEV` (personal schema, plus `CI_PR_<n>` per pull request) | `dbt build` locally; CI builds every pull request |
+| STAGING | `WALMART_STAGING.ANALYTICS` | Automatic on merge to `main` |
+| PROD | `WALMART_PROD.ANALYTICS` | After STAGING passes **and** a reviewer approves the `production` environment |
+
+- `.github/workflows/ci.yml`: builds and tests each pull request; drops its schema when the pull request closes
+- `.github/workflows/deploy.yml`: STAGING on merge, then PROD behind an approval gate
+- `ci/profiles.yml`: connection targets for CI (secrets come from GitHub, never from the repo)
+
 ## Repository layout
 
 - `models/`: dbt staging and mart models
@@ -55,6 +70,8 @@ Planned additions:
 - `snowflake/00_account_setup.sql`: one-time account setup (warehouse, storage integration locations)
 - `snowflake/01_raw_layer_<env>.sql`: per-environment database, load contract, stage and load
 - `aws/iam/snowflake-read-policy.json`: read-only IAM policy for the landing buckets
+- `snowflake/02_ci_service_user.sql`: `TRANSFORMER` role and the `GITHUB_CI` key-pair service user
+- `.github/workflows/`, `ci/`, `macros/`: CI/CD pipeline
 - `streamlit_app/`: the Streamlit in Snowflake app
 - `profiles.yml.example`: sample dbt connection profile
 

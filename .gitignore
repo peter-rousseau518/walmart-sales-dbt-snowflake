@@ -4,5 +4,10 @@ dbt_packages/
 logs/
 *.csv
 profiles.yml
+!ci/profiles.yml
 .env
 .DS_Store
+
+# Snowflake key pair (never commit)
+*.p8
+*.pub

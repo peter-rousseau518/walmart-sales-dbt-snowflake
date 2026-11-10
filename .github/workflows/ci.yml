@@ -1,0 +1,65 @@
+name: dbt CI
+
+# Every pull request to main is built and tested in its own schema in WALMART_DEV
+# (CI_PR_<number>). The schema is dropped when the pull request is closed or merged.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, closed]
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+  SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+  SNOWFLAKE_PRIVATE_KEY_PATH: ${{ github.workspace }}/rsa_key.p8
+  DBT_CI_SCHEMA: CI_PR_${{ github.event.pull_request.number }}
+
+jobs:
+  build:
+    name: dbt build (DEV, PR schema)
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dbt
+        run: pip install -r ci/requirements.txt
+      - name: Write Snowflake private key
+        run: |
+          printf '%s\n' "$SNOWFLAKE_PRIVATE_KEY" > rsa_key.p8
+          chmod 600 rsa_key.p8
+        env:
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+      - name: dbt deps
+        run: dbt deps --profiles-dir ci
+      - name: dbt build
+        run: dbt build --profiles-dir ci --target ci
+
+  cleanup:
+    name: Drop PR schema
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dbt
+        run: pip install -r ci/requirements.txt
+      - name: Write Snowflake private key
+        run: |
+          printf '%s\n' "$SNOWFLAKE_PRIVATE_KEY" > rsa_key.p8
+          chmod 600 rsa_key.p8
+        env:
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+      - name: dbt deps
+        run: dbt deps --profiles-dir ci
+      - name: Drop schema
+        run: >
+          dbt run-operation drop_ci_schema --profiles-dir ci --target ci
+          --args "{schema_name: $DBT_CI_SCHEMA}"

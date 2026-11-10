@@ -1,0 +1,35 @@
+# Used only by GitHub Actions (see .github/workflows). No secrets in this file:
+# the account, user and private key come from GitHub repository secrets.
+my_project:
+  target: ci
+  outputs:
+    ci:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"
+      role: TRANSFORMER
+      warehouse: COMPUTE_WH
+      database: WALMART_DEV
+      schema: "{{ env_var('DBT_CI_SCHEMA', 'CI') }}"   # one throwaway schema per pull request
+      threads: 4
+    staging:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"
+      role: TRANSFORMER
+      warehouse: COMPUTE_WH
+      database: WALMART_STAGING
+      schema: ANALYTICS
+      threads: 4
+    prod:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"
+      role: TRANSFORMER
+      warehouse: COMPUTE_WH
+      database: WALMART_PROD
+      schema: ANALYTICS
+      threads: 4
