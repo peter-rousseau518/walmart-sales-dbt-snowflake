@@ -11,3 +11,4 @@ profiles.yml
 # Snowflake key pair (never commit)
 *.p8
 *.pub
+!aws/test-files/*.csv

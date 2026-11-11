@@ -1,4 +1,4 @@
--- Silver: rename and de-duplicate (latest load wins per store and week).
+-- Silver: rows that passed every check in chk_store_features.
 -- 'NA' values already arrive as NULL from the load contract.
 select
     store_id,
@@ -13,8 +13,5 @@ select
     cpi,
     unemployment,
     is_holiday
-from {{ source('walmart', 'fact') }}
-qualify row_number() over (
-    partition by store_id, week_date
-    order by _loaded_at desc, _file_row_number desc
-) = 1
+from {{ ref('chk_store_features') }}
+where reject_reason is null

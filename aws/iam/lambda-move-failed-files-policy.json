@@ -1,0 +1,40 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadAndDeleteFailedLandingFiles",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::walmart-sales-landing-dev-pr518/landing/*",
+        "arn:aws:s3:::walmart-sales-landing-staging-pr518/landing/*",
+        "arn:aws:s3:::walmart-sales-landing-prod-pr518/landing/*"
+      ]
+    },
+    {
+      "Sid": "WriteErrorBucket",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::walmart-sales-errors-dev-pr518/*",
+        "arn:aws:s3:::walmart-sales-errors-staging-pr518/*",
+        "arn:aws:s3:::walmart-sales-errors-prod-pr518/*"
+      ]
+    },
+    {
+      "Sid": "Logs",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+name: dbt scheduled refresh
+
+# Rebuilds PROD SILVER and GOLD after the Monday 6:00 AM ET Snowflake load task,
+# and can be run by hand after a backfill (Actions -> dbt scheduled refresh -> Run workflow).
+# This runs code that is already approved on main, so it does not wait for approval.
+on:
+  schedule:
+    - cron: "0 12 * * 1"   # Mondays 12:00 UTC = 7:00 AM EST / 8:00 AM EDT
+  workflow_dispatch:
+
+concurrency: deploy
+
+env:
+  SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+  SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+  SNOWFLAKE_PRIVATE_KEY_PATH: ${{ github.workspace }}/rsa_key.p8
+
+jobs:
+  refresh:
+    name: Refresh PROD
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dbt
+        run: pip install -r ci/requirements.txt
+      - name: Write Snowflake private key
+        run: |
+          printf '%s\n' "$SNOWFLAKE_PRIVATE_KEY" > rsa_key.p8
+          chmod 600 rsa_key.p8
+        env:
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+      - name: dbt deps
+        run: dbt deps --profiles-dir ci
+      - name: dbt build (PROD)
+        run: dbt build --profiles-dir ci --target prod
