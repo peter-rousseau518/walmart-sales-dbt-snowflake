@@ -1,34 +1,36 @@
-# Runbook: weekly load, failures and reprocessing
+# Runbook: loads, failures and reprocessing
 
-## Normal week
+## How a file flows
 
-| When (ET) | What | Where to check |
-|---|---|---|
-| Monday 6:00 AM | Task `WALMART_PROD.RAW.WEEKLY_LOAD` runs `LOAD_LANDING_FILES()` | `SELECT * FROM TABLE(INFORMATION_SCHEMA.TASK_HISTORY()) ORDER BY scheduled_time DESC;` |
-| Monday ~7–8 AM | GitHub Actions `dbt scheduled refresh` rebuilds PROD SILVER and GOLD | Actions tab → dbt scheduled refresh |
-| After refresh | Streamlit app shows the new week | `WALMART_PROD.GOLD` |
+1. A file lands in `landing/<source>/` in `walmart-sales-landing-<env>`.
+2. S3 sends an event notification to the stage's SQS queue; Snowflake refreshes the stage's directory table.
+3. A stream on the directory table records the new file, and the triggered task runs `RAW.LOAD_LANDING_FILES()`
+   (COPY INTO with `ON_ERROR = SKIP_FILE`). Every file's result is written to `RAW.LOAD_AUDIT`.
+4. When rows load, Snowflake publishes a "loaded" event to SNS, and a Lambda starts the GitHub Actions
+   **dbt scheduled refresh** workflow, which rebuilds SILVER and GOLD in PROD (tests gate each layer).
+5. The Streamlit cache clears on the next page view because the refresh time changed.
 
-COPY INTO remembers which files it has loaded, so re-running the task never loads the same file twice.
+COPY INTO remembers which files it has loaded, so a file never loads twice.
+
+| Check | Query or place |
+|---|---|
+| Recent loads | `SELECT * FROM WALMART_PROD.RAW.LOAD_AUDIT ORDER BY loaded_at DESC;` |
+| Task runs | `SELECT * FROM TABLE(INFORMATION_SCHEMA.TASK_HISTORY()) ORDER BY scheduled_time DESC;` |
+| dbt refresh | GitHub → Actions → dbt scheduled refresh |
 
 ## When a file fails
 
 You receive an email from SNS with `"type": "FAILED_FILES"`, listing each file, its table and Snowflake's first error.
 
 1. **Find the file.** The Lambda has moved it to `walmart-sales-errors-<env>/<source>/<YYYY-MM-DD>/`, next to a
-   `<file>.error.json` with the original location and the error.
-2. **Confirm nothing bad loaded.** The file was skipped as a whole (`ON_ERROR = SKIP_FILE`), so the raw table
-   row count is unchanged.
-3. **Send it back to the source team** with the error, or fix it if the problem is obvious (for example, a text
-   value in a numeric column).
-4. **Re-send the corrected file** to the same `landing/<source>/` folder. Give it a new file name, because COPY
-   skips a file name it has already seen.
-5. **Load it:** wait for the next Monday run, or run it now:
-   ```sql
-   CALL WALMART_PROD.RAW.LOAD_LANDING_FILES();
-   ```
-   Then run the GitHub Actions workflow **dbt scheduled refresh** by hand (Run workflow).
-6. **Close it out:** check the row count, then delete the message from `walmart-reprocess-queue` in SQS.
-   Messages that are received three times without being deleted move to `walmart-reprocess-dlq`.
+   `<file>.error.json` with the original location and the error. `LOAD_AUDIT` shows it as skipped.
+2. **Nothing bad loaded.** The file was skipped as a whole, so the raw table is unchanged; all other files loaded.
+3. **The source team fixes it** (they received the same email) and re-sends it to `landing/<source>/` under a new
+   file name, because COPY skips a name it has already seen.
+4. **The backfill runs itself:** the event triggers the load, the incremental fact merges only the affected weeks,
+   and dbt refreshes gold.
+5. **Close it out:** when `LOAD_AUDIT` shows the file loaded, delete its message from `walmart-reprocess-queue`.
+   Messages received three times without being deleted move to `walmart-reprocess-dlq`; check it weekly.
 
 ## When rows are rejected
 
@@ -49,17 +51,28 @@ GROUP BY 1, 2;
 Good rows from the same file are already in GOLD. When the corrected rows are re-sent, the latest load wins and
 the row leaves the quarantine table on the next dbt run.
 
+## When a user reports a data issue
+
+Reports from the app's "Report a data issue" form arrive by email and in the issues table.
+Acknowledge within 1 business day; fix or explain within 3.
+
 ## When the task itself fails
 
 The task's `ERROR_INTEGRATION` sends an email (for example, if Snowflake can't reach the stage). Check the
 error in `TASK_HISTORY`, fix it (often the storage integration or IAM trust policy), then run
-`EXECUTE TASK WALMART_PROD.RAW.WEEKLY_LOAD;`.
+`EXECUTE TASK WALMART_PROD.RAW.LOAD_ON_ARRIVAL;`.
+
+## Recovering a table
+
+- Dropped table: `UNDROP TABLE <name>;` (Time Travel, 7 days on RAW and GOLD)
+- Bad data in gold: clone from Time Travel, or rebuild with `dbt build --full-refresh` from RAW
+- Lost raw data: reload from the files in S3 (versioned; Glacier after 90 days)
 
 ## Testing the error path
 
 1. Upload `aws/test-files/fact_bad_test.csv` to `landing/fact/` in the landing bucket.
-2. `CALL WALMART_<ENV>.RAW.LOAD_LANDING_FILES();` → one failed file.
+2. The load runs on its own → `LOAD_AUDIT` shows one skipped file.
 3. Check: the email arrives, a message is in the SQS queue, the file is in the error bucket with its
    `.error.json`, and `RAW.FACT` still has 8,190 rows.
-4. Upload `aws/test-files/fact_fixed_test.csv` and call the procedure again → `RAW.FACT` has 8,191 rows.
+4. Upload `aws/test-files/fact_fixed_test.csv` → `RAW.FACT` has 8,191 rows.
 5. Delete the SQS message.
