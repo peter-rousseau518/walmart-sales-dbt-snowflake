@@ -4,6 +4,10 @@ profile: my_project
 
 model-paths: ["models"]
 
+# PROD only: alert the source team through SNS if rows were quarantined
+on-run-end:
+  - "{{ notify_quarantine() }}"
+
 # Medallion layers get their own schemas:
 #   staging/ -> SILVER (views),  marts/ -> GOLD (tables)
 # In STAGING and PROD the names are exactly SILVER and GOLD; in DEV and CI they are

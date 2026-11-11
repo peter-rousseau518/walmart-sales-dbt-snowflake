@@ -1,13 +1,10 @@
--- Silver: rename and de-duplicate. Types are already enforced by the load contract.
--- If the same store/department/week arrives twice (a re-sent file), keep the latest load.
+-- Silver: rows that passed every check in chk_department_sales.
+-- Rejected rows (duplicates, unknown stores, missing sales) go to quarantine_rows instead.
 select
     store_id,
     dept_id,
     week_date      as sales_date,
     weekly_sales,
     is_holiday
-from {{ source('walmart', 'department') }}
-qualify row_number() over (
-    partition by store_id, dept_id, week_date
-    order by _loaded_at desc, _file_row_number desc
-) = 1
+from {{ ref('chk_department_sales') }}
+where reject_reason is null
