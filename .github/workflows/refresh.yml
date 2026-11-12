@@ -1,7 +1,8 @@
 name: dbt scheduled refresh
 
-# Rebuilds PROD SILVER and GOLD after the Monday 6:00 AM ET Snowflake load task,
-# and can be run by hand after a backfill (Actions -> dbt scheduled refresh -> Run workflow).
+# Rebuilds PROD SILVER and GOLD. Files now load into RAW as soon as they land
+# (Snowflake task LOAD_ON_ARRIVAL); this weekly run is the safety net that picks them up,
+# and it can be run by hand after a backfill (Actions -> dbt scheduled refresh -> Run workflow).
 # This runs code that is already approved on main, so it does not wait for approval.
 on:
   schedule:
