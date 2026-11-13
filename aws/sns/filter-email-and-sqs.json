@@ -1,0 +1,6 @@
+{
+  "$or": [
+    { "type": [ { "anything-but": [ "FILES_LOADED" ] } ] },
+    { "type": [ { "exists": false } ] }
+  ]
+}

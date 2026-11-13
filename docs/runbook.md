@@ -51,6 +51,19 @@ GROUP BY 1, 2;
 Good rows from the same file are already in GOLD. When the corrected rows are re-sent, the latest load wins and
 the row leaves the quarantine table on the next dbt run.
 
+## When dbt doesn't refresh after a load
+
+`LOAD_AUDIT` shows LOADED but no **dbt scheduled refresh** run appears in GitHub Actions:
+
+1. Lambda → `walmart-start-dbt-refresh` → **Monitor** → **View CloudWatch logs** → latest log stream.
+2. `GitHub returned 401`: the token expired or was mistyped. Create a new fine-grained token
+   (Contents: Read and write, this repository only) and update `GITHUB_TOKEN` in the Lambda's
+   environment variables.
+3. `GitHub returned 404`: `GITHUB_REPO` is wrong or the token doesn't cover this repository.
+4. No log at all: the Lambda's SNS subscription or its filter policy (`aws/sns/`) is missing.
+
+Until it's fixed, run the refresh by hand: Actions → dbt scheduled refresh → Run workflow.
+
 ## When a user reports a data issue
 
 Reports from the app's "Report a data issue" form arrive by email and in the issues table.

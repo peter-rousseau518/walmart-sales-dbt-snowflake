@@ -8,6 +8,16 @@ sources:
     database: "{{ target.database }}"
     schema: RAW
     tables:
+      # Freshness: weekly files are expected; warn if nothing new has loaded for 8 days.
+      # Run with: dbt source freshness (the refresh workflow runs it before every build)
       - name: department
-      - name: stores
+        config:
+          loaded_at_field: _loaded_at
+          freshness:
+            warn_after: {count: 8, period: day}
+      - name: stores          # changes rarely, so no freshness check
       - name: fact
+        config:
+          loaded_at_field: _loaded_at
+          freshness:
+            warn_after: {count: 8, period: day}

@@ -11,6 +11,8 @@
         LOAD_LANDING_FILES(): COPY INTO with ON_ERROR = SKIP_FILE
      5. Every file's result is written to RAW.LOAD_AUDIT; skipped files are
         published to SNS (email + SQS reprocess queue + Lambda -> error bucket)
+     6. When files loaded, a FILES_LOADED event goes to SNS; the Lambda
+        walmart-start-dbt-refresh starts the dbt refresh in GitHub Actions
 
    Parts:
      Part 1  audit tables (all environments)
@@ -118,6 +120,7 @@ DECLARE
   qid      VARCHAR;
   failed   ARRAY;
   loaded   INTEGER;
+  loaded_files ARRAY;
   message  VARCHAR;
 BEGIN
 
@@ -195,6 +198,25 @@ BEGIN
       SNOWFLAKE.NOTIFICATION.INTEGRATION('WALMART_ERRORS_SNS'));
   END IF;
 
+  -- Publish a FILES_LOADED event when anything loaded. The Lambda walmart-start-dbt-refresh
+  -- receives it (SNS filter policy) and starts the dbt refresh in GitHub Actions.
+  IF (loaded > 0) THEN
+    SELECT ARRAY_AGG(OBJECT_CONSTRUCT('table', table_name, 'file', file_name, 'rows', rows_loaded))
+      INTO :loaded_files
+      FROM WALMART_DEV.RAW.LOAD_AUDIT
+     WHERE run_id = :run_id AND status = 'LOADED';
+    message := TO_JSON(OBJECT_CONSTRUCT(
+      'type',         'FILES_LOADED',
+      'environment',  'DEV',
+      'run_id',       run_id,
+      'run_at',       CURRENT_TIMESTAMP()::VARCHAR,
+      'files_loaded', loaded,
+      'loaded_files', loaded_files));
+    CALL SYSTEM$SEND_SNOWFLAKE_NOTIFICATION(
+      SNOWFLAKE.NOTIFICATION.APPLICATION_JSON(:message),
+      SNOWFLAKE.NOTIFICATION.INTEGRATION('WALMART_ERRORS_SNS'));
+  END IF;
+
   -- Retention: keep two years of load history
   DELETE FROM WALMART_DEV.RAW.LOAD_AUDIT WHERE loaded_at < DATEADD(year, -2, CURRENT_TIMESTAMP());
 
@@ -217,6 +239,7 @@ DECLARE
   qid      VARCHAR;
   failed   ARRAY;
   loaded   INTEGER;
+  loaded_files ARRAY;
   message  VARCHAR;
 BEGIN
 
@@ -294,6 +317,25 @@ BEGIN
       SNOWFLAKE.NOTIFICATION.INTEGRATION('WALMART_ERRORS_SNS'));
   END IF;
 
+  -- Publish a FILES_LOADED event when anything loaded. The Lambda walmart-start-dbt-refresh
+  -- receives it (SNS filter policy) and starts the dbt refresh in GitHub Actions.
+  IF (loaded > 0) THEN
+    SELECT ARRAY_AGG(OBJECT_CONSTRUCT('table', table_name, 'file', file_name, 'rows', rows_loaded))
+      INTO :loaded_files
+      FROM WALMART_STAGING.RAW.LOAD_AUDIT
+     WHERE run_id = :run_id AND status = 'LOADED';
+    message := TO_JSON(OBJECT_CONSTRUCT(
+      'type',         'FILES_LOADED',
+      'environment',  'STAGING',
+      'run_id',       run_id,
+      'run_at',       CURRENT_TIMESTAMP()::VARCHAR,
+      'files_loaded', loaded,
+      'loaded_files', loaded_files));
+    CALL SYSTEM$SEND_SNOWFLAKE_NOTIFICATION(
+      SNOWFLAKE.NOTIFICATION.APPLICATION_JSON(:message),
+      SNOWFLAKE.NOTIFICATION.INTEGRATION('WALMART_ERRORS_SNS'));
+  END IF;
+
   -- Retention: keep two years of load history
   DELETE FROM WALMART_STAGING.RAW.LOAD_AUDIT WHERE loaded_at < DATEADD(year, -2, CURRENT_TIMESTAMP());
 
@@ -316,6 +358,7 @@ DECLARE
   qid      VARCHAR;
   failed   ARRAY;
   loaded   INTEGER;
+  loaded_files ARRAY;
   message  VARCHAR;
 BEGIN
 
@@ -393,6 +436,25 @@ BEGIN
       SNOWFLAKE.NOTIFICATION.INTEGRATION('WALMART_ERRORS_SNS'));
   END IF;
 
+  -- Publish a FILES_LOADED event when anything loaded. The Lambda walmart-start-dbt-refresh
+  -- receives it (SNS filter policy) and starts the dbt refresh in GitHub Actions.
+  IF (loaded > 0) THEN
+    SELECT ARRAY_AGG(OBJECT_CONSTRUCT('table', table_name, 'file', file_name, 'rows', rows_loaded))
+      INTO :loaded_files
+      FROM WALMART_PROD.RAW.LOAD_AUDIT
+     WHERE run_id = :run_id AND status = 'LOADED';
+    message := TO_JSON(OBJECT_CONSTRUCT(
+      'type',         'FILES_LOADED',
+      'environment',  'PROD',
+      'run_id',       run_id,
+      'run_at',       CURRENT_TIMESTAMP()::VARCHAR,
+      'files_loaded', loaded,
+      'loaded_files', loaded_files));
+    CALL SYSTEM$SEND_SNOWFLAKE_NOTIFICATION(
+      SNOWFLAKE.NOTIFICATION.APPLICATION_JSON(:message),
+      SNOWFLAKE.NOTIFICATION.INTEGRATION('WALMART_ERRORS_SNS'));
+  END IF;
+
   -- Retention: keep two years of load history
   DELETE FROM WALMART_PROD.RAW.LOAD_AUDIT WHERE loaded_at < DATEADD(year, -2, CURRENT_TIMESTAMP());
 
@@ -428,7 +490,7 @@ EXECUTE IMMEDIATE $$
 BEGIN
   -- Reading the stream in a DML statement consumes it, so the task does not fire again for the same files
   INSERT INTO WALMART_DEV.RAW.FILE_ARRIVALS (relative_path, size_bytes, last_modified, event_action)
-    SELECT relative_path, size, last_modified, METADATA$ACTION
+    SELECT relative_path, size, last_modified::TIMESTAMP_LTZ, METADATA$ACTION
     FROM WALMART_DEV.RAW.LANDING_EVENTS_STREAM;
   CALL WALMART_DEV.RAW.LOAD_LANDING_FILES();
 END;
@@ -463,7 +525,7 @@ EXECUTE IMMEDIATE $$
 BEGIN
   -- Reading the stream in a DML statement consumes it, so the task does not fire again for the same files
   INSERT INTO WALMART_STAGING.RAW.FILE_ARRIVALS (relative_path, size_bytes, last_modified, event_action)
-    SELECT relative_path, size, last_modified, METADATA$ACTION
+    SELECT relative_path, size, last_modified::TIMESTAMP_LTZ, METADATA$ACTION
     FROM WALMART_STAGING.RAW.LANDING_EVENTS_STREAM;
   CALL WALMART_STAGING.RAW.LOAD_LANDING_FILES();
 END;
@@ -498,7 +560,7 @@ EXECUTE IMMEDIATE $$
 BEGIN
   -- Reading the stream in a DML statement consumes it, so the task does not fire again for the same files
   INSERT INTO WALMART_PROD.RAW.FILE_ARRIVALS (relative_path, size_bytes, last_modified, event_action)
-    SELECT relative_path, size, last_modified, METADATA$ACTION
+    SELECT relative_path, size, last_modified::TIMESTAMP_LTZ, METADATA$ACTION
     FROM WALMART_PROD.RAW.LANDING_EVENTS_STREAM;
   CALL WALMART_PROD.RAW.LOAD_LANDING_FILES();
 END;
