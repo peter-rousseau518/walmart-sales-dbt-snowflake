@@ -19,6 +19,13 @@ select
 from {{ ref('stg_department_sales') }}
 
 {% if is_incremental() %}
--- coalesce: the first incremental run after this change finds _loaded_at empty and merges every row
-where _loaded_at > (select coalesce(max(_loaded_at), '1900-01-01'::timestamp_ltz) from {{ this }})
+  {#- Only filter once the existing table has _loaded_at. On the first incremental run after
+      this column was added, every row is merged, which fills _loaded_at for all of them. -#}
+  {%- set existing_columns = adapter.get_columns_in_relation(this) | map(attribute='name') | map('upper') | list -%}
+  {%- if '_LOADED_AT' in existing_columns %}
+where _loaded_at > (
+    select coalesce(max(existing._loaded_at), '1900-01-01'::timestamp_ltz)
+    from {{ this }} as existing
+)
+  {%- endif %}
 {% endif %}
