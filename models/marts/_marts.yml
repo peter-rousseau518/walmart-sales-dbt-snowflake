@@ -18,7 +18,9 @@ models:
         data_tests: [not_null]
 
   - name: fct_weekly_sales
-    description: "Grain: one row per store, department and week. Sales only."
+    description: >
+      Grain: one row per store, department and week. Sales only. Incremental: merges rows
+      loaded since the last run on store_key, dept_id and date_key.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:

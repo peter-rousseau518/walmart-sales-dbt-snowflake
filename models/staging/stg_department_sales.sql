@@ -5,6 +5,7 @@ select
     dept_id,
     week_date      as sales_date,
     weekly_sales,
-    is_holiday
+    is_holiday,
+    _loaded_at      -- load time from RAW; drives the incremental fact
 from {{ ref('chk_department_sales') }}
 where reject_reason is null

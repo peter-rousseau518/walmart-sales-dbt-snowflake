@@ -1,26 +1,50 @@
 name: dbt scheduled refresh
 
-# Rebuilds PROD SILVER and GOLD. Files now load into RAW as soon as they land
-# (Snowflake task LOAD_ON_ARRIVAL); this weekly run is the safety net that picks them up,
-# and it can be run by hand after a backfill (Actions -> dbt scheduled refresh -> Run workflow).
-# This runs code that is already approved on main, so it does not wait for approval.
+# Rebuilds SILVER and GOLD after new files load into RAW. Runs code that is already
+# approved on main, so it does not wait for approval.
+#
+# Triggers:
+#   repository_dispatch "raw-loaded": sent by the Lambda walmart-start-dbt-refresh right after
+#                                     Snowflake loads new files (STAGING or PROD)
+#   schedule:                         weekly safety net for PROD
+#   workflow_dispatch:                run by hand (Actions -> dbt scheduled refresh -> Run workflow)
 on:
+  repository_dispatch:
+    types: [raw-loaded]
   schedule:
     - cron: "0 12 * * 1"   # Mondays 12:00 UTC = 7:00 AM EST / 8:00 AM EDT
   workflow_dispatch:
-
-concurrency: deploy
+    inputs:
+      target:
+        description: "Environment to refresh"
+        type: choice
+        options: [prod, staging]
+        default: prod
 
 env:
   SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
   SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
   SNOWFLAKE_PRIVATE_KEY_PATH: ${{ github.workspace }}/rsa_key.p8
+  # prod or staging: from the Lambda's payload, the manual input, or prod for the schedule
+  TARGET: ${{ github.event.client_payload.environment || inputs.target || 'prod' }}
+
+# Shares the "deploy" group with deploy.yml: only one dbt run at a time, so a refresh
+# never overlaps a deployment. A newer run waits for the running one.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
 
 jobs:
   refresh:
-    name: Refresh PROD
+    name: Refresh ${{ github.event.client_payload.environment || inputs.target || 'prod' }}
     runs-on: ubuntu-latest
     steps:
+      - name: Check target
+        run: |
+          case "$TARGET" in
+            prod|staging) echo "Refreshing $TARGET" ;;
+            *) echo "Unknown target '$TARGET' (expected prod or staging)"; exit 1 ;;
+          esac
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
@@ -35,5 +59,8 @@ jobs:
           SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
       - name: dbt deps
         run: dbt deps --profiles-dir ci
-      - name: dbt build (PROD)
-        run: dbt build --profiles-dir ci --target prod
+      - name: Source freshness (warns if no new file in 8 days)
+        run: dbt source freshness --profiles-dir ci --target "$TARGET"
+        continue-on-error: true
+      - name: dbt build
+        run: dbt build --profiles-dir ci --target "$TARGET"
