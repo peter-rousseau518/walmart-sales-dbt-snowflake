@@ -5,8 +5,8 @@ select the subscription -> Edit -> Subscription filter policy -> scope **Message
 
 | Subscription | Policy file | Receives |
 |---|---|---|
-| Email | `filter-email-and-sqs.json` | Everything except `FILES_LOADED` (failed files, rejected rows, task failures) |
-| SQS `walmart-reprocess-queue` | `filter-email-and-sqs.json` | Same as email |
+| Email | `filter-email-and-sqs.json` | Everything except `FILES_LOADED` (failed files, rejected rows, task failures, data issues reported in the dashboard) |
+| SQS `walmart-reprocess-queue` | `filter-sqs.json` | Same as email, minus `DATA_ISSUE` (dashboard reports are not files to reprocess) |
 | Lambda `walmart-start-dbt-refresh` | `filter-dbt-refresh-lambda.json` | Only `FILES_LOADED` |
 | Lambda `walmart-move-failed-files` | none | Everything; the function acts only on `FAILED_FILES` |
 
