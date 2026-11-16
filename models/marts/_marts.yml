@@ -65,3 +65,11 @@ models:
               arguments:
                 to: ref('dim_date')
                 field: date_key
+
+  - name: refresh_log
+    description: >
+      One row per successful dbt build (runs after every mart and its tests pass).
+      The dashboard uses max(refreshed_at) for "Data as of" and to refresh its cache.
+    columns:
+      - name: refreshed_at
+        data_tests: [not_null]

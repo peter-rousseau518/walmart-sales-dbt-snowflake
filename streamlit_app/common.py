@@ -1,13 +1,39 @@
+import inspect
+import os
+
 import pandas as pd
 import streamlit as st
 from snowflake.snowpark.context import get_active_session
 
 DB = "WALMART_PROD.GOLD"   # the dashboard reads production only
+ISSUES_PROC = "WALMART_PROD.FEEDBACK.REPORT_DATA_ISSUE"
 MARKDOWNS = ["markdown1", "markdown2", "markdown3", "markdown4", "markdown5"]
 
 
-@st.cache_data
+# ---------------------------------------------------------------- freshness and caching
+@st.cache_data(ttl=60)
+def data_as_of():
+    """Time of the last successful dbt build (from GOLD.REFRESH_LOG), checked at most once a minute."""
+    try:
+        row = get_active_session().sql(f"select max(refreshed_at) as t from {DB}.refresh_log").collect()[0]
+        return row["T"]
+    except Exception:          # refresh log not built yet: fall back to the 1-hour cache
+        return None
+
+
+# The cached loaders take the refresh time as an argument. When dbt builds new data,
+# data_as_of() changes, the cache key changes, and the next page view reloads from Snowflake.
+# ttl=3600 is a fallback in case the refresh log can't be read.
 def load_weekly():
+    return _load_weekly(str(data_as_of()))
+
+
+def load_dept():
+    return _load_dept(str(data_as_of()))
+
+
+@st.cache_data(ttl=3600)
+def _load_weekly(as_of):
     """One row per store per week."""
     session = get_active_session()
     df = session.sql(f"""
@@ -39,8 +65,8 @@ def load_weekly():
     return df
 
 
-@st.cache_data
-def load_dept():
+@st.cache_data(ttl=3600)
+def _load_dept(as_of):
     """One row per department per week (all stores combined)."""
     session = get_active_session()
     df = session.sql(f"""
@@ -58,6 +84,7 @@ def load_dept():
 
 
 def year_filter(df):
+    sidebar_tools(_calling_page())
     years = sorted(df["year"].unique())
     chosen = st.sidebar.multiselect("Year", years, default=years)
     out = df[df["year"].isin(chosen)].copy()
@@ -70,3 +97,36 @@ def year_filter(df):
 def pad(index, width=2):
     """Zero-pad labels so charts sort them in numeric order."""
     return index.astype(int).astype(str).str.zfill(width)
+
+
+# ---------------------------------------------------------------- sidebar: data as of + issue form
+def _calling_page():
+    """Page name from the file that called year_filter, e.g. 'Weekly Sales by CPI'."""
+    name = os.path.splitext(os.path.basename(inspect.stack()[2].filename))[0]
+    return name.split("_", 1)[-1].replace("_", " ") if name[:1].isdigit() else name.replace("_", " ")
+
+
+def _viewer():
+    """Who is viewing the app (Streamlit in Snowflake provides this); None if unavailable."""
+    for attr in ("user", "experimental_user"):
+        try:
+            info = getattr(st, attr)
+            return info.get("user_name") or info.get("email")
+        except Exception:
+            continue
+    return None
+
+
+def sidebar_tools(page):
+    """'Data as of' and a 'Report a data issue' form, shown in the sidebar of every page."""
+    as_of = data_as_of()
+    st.sidebar.caption(f"Data as of {pd.Timestamp(as_of):%b %d, %Y %H:%M}" if as_of else "Data as of: unknown")
+    with st.sidebar.expander("Report a data issue"):
+        with st.form("data_issue", clear_on_submit=True):
+            text = st.text_area("What looks wrong?", placeholder="e.g. Store 14 sales for March 2012 look too low")
+            if st.form_submit_button("Send to data engineering"):
+                if not text.strip():
+                    st.warning("Please describe the issue.")
+                else:
+                    issue_id = get_active_session().call(ISSUES_PROC, page, text.strip(), _viewer())
+                    st.success(f"Thanks. Issue #{issue_id} logged. We reply within 1 business day.")

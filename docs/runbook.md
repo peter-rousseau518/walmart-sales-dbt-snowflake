@@ -66,8 +66,34 @@ Until it's fixed, run the refresh by hand: Actions → dbt scheduled refresh →
 
 ## When a user reports a data issue
 
-Reports from the app's "Report a data issue" form arrive by email and in the issues table.
-Acknowledge within 1 business day; fix or explain within 3.
+Reports from the dashboard's **Report a data issue** form are stored in `WALMART_PROD.FEEDBACK.DATA_ISSUES`
+and emailed to data engineering (`"type": "DATA_ISSUE"`). Acknowledge within 1 business day; fix or explain
+within 3.
+
+```sql
+SELECT * FROM WALMART_PROD.FEEDBACK.DATA_ISSUES WHERE status <> 'RESOLVED' ORDER BY reported_at;
+
+UPDATE WALMART_PROD.FEEDBACK.DATA_ISSUES SET status = 'ACKNOWLEDGED' WHERE issue_id = <id>;
+UPDATE WALMART_PROD.FEEDBACK.DATA_ISSUES
+   SET status = 'RESOLVED', resolution = '<what was wrong and what changed>', resolved_at = CURRENT_TIMESTAMP()
+ WHERE issue_id = <id>;
+```
+
+## Weekly cost check
+
+Loads and dbt run on `TRANSFORM_WH`; the dashboard runs on `STREAMLIT_WH`. Each has a resource monitor that
+emails at 80% of its monthly credit quota and suspends the warehouse at 100%.
+
+```sql
+SELECT warehouse_name, ROUND(SUM(credits_used), 2) AS credits
+FROM SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY
+WHERE start_time >= DATEADD(day, -7, CURRENT_TIMESTAMP())
+GROUP BY 1 ORDER BY 2 DESC;
+```
+
+If a monitor suspends a warehouse, raise its quota with
+`ALTER RESOURCE MONITOR <name> SET CREDIT_QUOTA = <n>;` after checking which queries used the credits
+(Snowsight → Monitoring → Query History, filtered by warehouse).
 
 ## When the task itself fails
 

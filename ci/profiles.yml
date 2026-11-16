@@ -9,7 +9,7 @@ my_project:
       user: "{{ env_var('SNOWFLAKE_USER') }}"
       private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"
       role: TRANSFORMER
-      warehouse: COMPUTE_WH
+      warehouse: TRANSFORM_WH
       database: WALMART_DEV
       schema: "{{ env_var('DBT_CI_SCHEMA', 'CI') }}"   # one throwaway schema per pull request
       threads: 4
@@ -19,7 +19,7 @@ my_project:
       user: "{{ env_var('SNOWFLAKE_USER') }}"
       private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"
       role: TRANSFORMER
-      warehouse: COMPUTE_WH
+      warehouse: TRANSFORM_WH
       database: WALMART_STAGING
       schema: ANALYTICS          # base schema only; models go to SILVER and GOLD
       threads: 4
@@ -29,7 +29,7 @@ my_project:
       user: "{{ env_var('SNOWFLAKE_USER') }}"
       private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"
       role: TRANSFORMER
-      warehouse: COMPUTE_WH
+      warehouse: TRANSFORM_WH
       database: WALMART_PROD
       schema: ANALYTICS          # base schema only; models go to SILVER and GOLD
       threads: 4

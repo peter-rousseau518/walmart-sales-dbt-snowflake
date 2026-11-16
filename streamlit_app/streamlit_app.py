@@ -1,6 +1,7 @@
 import pandas as pd
 import streamlit as st
 from snowflake.snowpark.context import get_active_session
+from common import data_as_of, sidebar_tools
 
 st.set_page_config(page_title="Walmart Sales", layout="wide")
 session = get_active_session()
@@ -8,8 +9,9 @@ session = get_active_session()
 DB = "WALMART_PROD.GOLD"   # the dashboard reads production only
 
 
-@st.cache_data
-def load_data():
+@st.cache_data(ttl=3600)
+def load_data(as_of):
+    """as_of is the last dbt refresh time: a new refresh changes it and reloads the data."""
     query = f"""
         select
             d.full_date,
@@ -30,7 +32,8 @@ def load_data():
     return df
 
 
-df = load_data()
+df = load_data(str(data_as_of()))
+sidebar_tools("Home")
 
 st.title("Walmart Weekly Sales")
 
