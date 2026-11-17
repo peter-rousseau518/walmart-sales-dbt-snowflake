@@ -103,9 +103,28 @@ error in `TASK_HISTORY`, fix it (often the storage integration or IAM trust poli
 
 ## Recovering a table
 
-- Dropped table: `UNDROP TABLE <name>;` (Time Travel, 7 days on RAW and GOLD)
-- Bad data in gold: clone from Time Travel, or rebuild with `dbt build --full-refresh` from RAW
-- Lost raw data: reload from the files in S3 (versioned; Glacier after 90 days)
+- Dropped table: `UNDROP TABLE <name>;` (Time Travel: 7 days on PROD RAW, GOLD and FEEDBACK; 1 day in DEV and STAGING)
+- Bad data in gold: clone from Time Travel (`CREATE TABLE ... CLONE ... AT (OFFSET => -3600)`), or rebuild with
+  `dbt build --full-refresh` from RAW
+- Lost raw data: reload from the files in S3. Landing buckets are versioned, so a deleted or overwritten file can be
+  restored from **Show versions** for 30 days. Files older than 90 days are in Glacier and must be restored
+  (S3 → object → **Initiate restore**) before Snowflake can read them again. Examples: `snowflake/07_retention.sql`
+
+## Encryption and access errors
+
+All six buckets, the SNS topic and both SQS queues are encrypted with the customer-managed KMS key
+`alias/walmart-pipeline`, and the buckets refuse any request that doesn't use TLS (`aws/s3/`).
+
+An error mentioning **kms** or **AccessDenied** after a key or policy change usually means a role lost access to
+the key. The roles that need `aws/iam/walmart-kms-use-policy.json` attached:
+
+| Role | Why |
+|---|---|
+| Snowflake storage-integration role (from `DESC INTEGRATION s3_walmart_int`) | Reads encrypted landing files |
+| `snowflake-sns-publisher` | Publishes to the encrypted SNS topic |
+| `walmart-move-failed-files-role` | Reads failed files and writes them to the encrypted error buckets |
+
+Never schedule the key for deletion: encrypted files and messages can't be read without it.
 
 ## Testing the error path
 

@@ -1,0 +1,7 @@
+{
+  "Sid": "AllowSNSToDeliverToEncryptedSQS",
+  "Effect": "Allow",
+  "Principal": { "Service": "sns.amazonaws.com" },
+  "Action": [ "kms:GenerateDataKey*", "kms:Decrypt" ],
+  "Resource": "*"
+}

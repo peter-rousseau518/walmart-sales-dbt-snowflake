@@ -118,10 +118,12 @@ The runbook for loads, failures and reprocessing is in [docs/runbook.md](docs/ru
 - `models/marts/`: gold dimensions and facts
 - `tests/`: custom dbt tests (grain, holiday rule, quarantine warning)
 - `macros/`: schema naming (SILVER/GOLD, prefixed in DEV and CI), CI schema cleanup, quarantine alert
-- `snowflake/`: account setup, per-environment raw layer and load contract, CI service user, SILVER/GOLD schemas,
-  and the error path (notification integration, load procedures, load task)
-- `aws/iam/`: IAM policies (Snowflake read access, SNS publish, Lambda)
-- `aws/lambda/move_failed_files.py`: moves failed files to the error bucket
+- `snowflake/`: numbered setup scripts: account setup, per-environment raw layer and load contract, CI service user,
+  SILVER/GOLD schemas, error path, event-driven load, dashboard operations, retention
+- `aws/iam/`: IAM policies (Snowflake read access, SNS publish, Lambdas, KMS key use)
+- `aws/kms/`, `aws/s3/`: KMS key policy statement, TLS-only bucket policies, encryption and lifecycle settings
+- `aws/sns/`: SNS subscription filter policies
+- `aws/lambda/`: `move_failed_files.py` (failed files to the error bucket), `start_dbt_refresh.py` (starts dbt after each load)
 - `aws/test-files/`: a bad and a corrected file for testing the error path
 - `.github/workflows/`, `ci/`: CI/CD pipeline
 - `streamlit_app/`: the Streamlit in Snowflake app
